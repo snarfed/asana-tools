@@ -141,6 +141,10 @@ for task in tasks:
             actual = float(match.group(2) or estimated)
         else:
             actual = float(match.group(2) or 0.0)
+    else:
+        for tag in tags:
+            if tag['name'].endswith('pts'):
+                estimated = actual = float(tag['name'][:-3])
     if completed:
         estimated_points_completed += estimated
         actual_points_completed += actual

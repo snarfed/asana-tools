@@ -41,9 +41,13 @@ The script assumes sprints are broken down into discrete projects, and parses th
 
 **Task Name**
 
-To track story points, estimates must be included in the individual task names. A task with an estimated value of 50 would look like this:
+To track story points, estimates can be included in task names or tags. A task with an estimated value of 50 would look like this:
 
 `[50] enable purchase without being logged in`
+
+Or like this:
+
+`enable purchase without being logged in` _Tags:_ `50pts`, `Feature`
 
 If you are tracking time instead of points, you can also add an _actual_ value to the task if the time spent is greater or less than that estimated. Continuing with the example above, if the task took 60 units to complete, I would represent that as follows:
 
@@ -57,5 +61,4 @@ It's generally bad form to add tasks during a sprint, but if you must, it is rec
 
 ### todo
 
-* generate burndown plots
 * create automated web dashboard

@@ -226,3 +226,13 @@ print "Completed [Actual]: %s" % actual_points_completed
 print "Actual points on Core: %s (%s%%)" % (points_core, percentage_core)
 print "Actual points on Custom: %s (%s%%)" % (points_custom, percentage_custom)
 print "Actual points on Product: %s (%s%%)" % (points_product, percentage_product)
+
+# Generate chart URL using Google Image Charts API
+# https://google-developers.appspot.com/chart/image/docs/making_charts
+start_date.strftime('%m-%d')
+now_str = datetime.datetime.now().strftime(DATE_FORMAT)
+print ('Burndown chart: https://chart.googleapis.com/chart?'
+       'cht=lc&chds=a&chs=600x400&chxt=x,y&chxs=0|1&chxr=&'
+       'chxl=0:|%s|%s&chd=t:%s' %
+       (start_date.strftime('%b%%20%d'), end_date.strftime('%b%%20%d'),
+        ','.join(str(day[1]) if day[0] <= now_str else '_' for day in burndown)))

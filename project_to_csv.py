@@ -24,6 +24,7 @@ parser.add_argument('-k', '--key', help='Your Asana API key. Attempts to use ASA
 parser.add_argument('-p', '--projectid', help='Asana project id to pull tasks from.', required=False)
 parser.add_argument('-s', '--start', help='Sprint start date in YYYY-MM-DD.', required=False)
 parser.add_argument('-e', '--end', help='Sprint end date in YYYY-MM-DD.', required=False)
+parser.add_argument('-b', '--default_estimate', help='Default estimate for tasks without explicit estimates.', required=False, type=float, default=0)
 parser.add_argument('-d', '--debug', help='Enable Asana API debugging.', required=False)
 args = parser.parse_args()
 
@@ -125,7 +126,7 @@ for task in tasks:
 
     # time estimation
     match = re.search(pattern_estimate, name)
-    estimated, actual = 0, 0
+    estimated, actual = args.default_estimate, args.default_estimate
     if match:
         if match.group(1) == '?': # unknown
             estimated = 0.0

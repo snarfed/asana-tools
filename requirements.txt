@@ -1,5 +1,4 @@
 asana==0.1.4
-distribute==0.6.28
 gitchangelog==2.2.0
 ipython==3.0.0
 oauthlib==0.7.2

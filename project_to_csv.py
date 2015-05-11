@@ -74,6 +74,7 @@ if args.input:
     else:
         end = raw_input("Sprint end date (YYYY-MM-DD): ")
 elif args.projectid:
+    # Asana API reference: https://asana.com/developers/api-reference/users
     client = asana.Client.basic_auth(ASANA_API_KEY)
     asana_project = client.projects.find_by_id(int(args.projectid, 10))
     # update default file names
@@ -85,15 +86,19 @@ elif args.projectid:
         start = match.group(1)
         end = match.group(2)
     else:
-        start = raw_input("Sprint start date (YYYY-MM-DD): ")
-        end = raw_input("Sprint end date (YYYY-MM-DD): ")
+        start = args.start or raw_input("Sprint start date (YYYY-MM-DD): ")
+        end = args.end or raw_input("Sprint end date (YYYY-MM-DD): ")
     # only a summary of tasks is returned by project query
     # for additional task details, need to query individual tasks
     print "Gathering tasks from '%s'\nhttps://app.asana.com/0/%s" % (asana_project['name'], args.projectid)
     tasks = []
     project_tasks = client.tasks.find_by_project(int(args.projectid, 10))
     for task in project_tasks:
+        # can't use print because it adds a space afterward
+        sys.stdout.write('.')
+        sys.stdout.flush()
         tasks.append(client.tasks.find_by_id(task['id']))
+    print
 
 # convert start/end to datetime
 start_date = dateutil.parser.parse(start)

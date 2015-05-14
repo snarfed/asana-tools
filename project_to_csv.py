@@ -1,4 +1,6 @@
 import argparse
+import collections
+import copy
 import csv
 import datetime
 import dateutil.parser
@@ -14,8 +16,9 @@ DATE_FORMAT = '%Y-%m-%d'
 DATETIME_FORMAT = '%Y%m%d_%H%M'
 
 # workspace specific tag IDs
-TAGS = {'core': 28556938640340,
-        'custom': 28556938640337,
+TAGS = {'P0': 29258466050364,
+        'P1': 29258466050361,
+        'P2': 29258466050359,
        }
 
 parser = argparse.ArgumentParser(description='This script generates a burndown chart from Asana tasks. The asana python module is required.')
@@ -36,15 +39,18 @@ pattern_dates = '\[(20\d{2}-\d{1,2}-\d{1,2})[-:|\s]+(20\d{2}-\d{1,2}-\d{1,2})\]'
 
 # initialize counts
 points_estimated, points_actual = 0, 0
-points_core, points_custom = 0, 0
 estimated_points_completed, actual_points_completed = 0, 0
+estimated_by_tag = collections.defaultdict(float)  # these map tag name in TAGS to points
+actual_by_tag = collections.defaultdict(float)
 
 # output setup
 tasks_list, burndown = [], []
 now = datetime.datetime.utcnow()
-tasks_list_csv = 'project_task_%s.csv' % now.strftime(DATETIME_FORMAT)
-burndown_csv = 'burndown_%s.csv' % now.strftime(DATETIME_FORMAT)
-points_completed_by_date, points_completed_by_date_actual = {}, {}
+points_completed_by_date = collections.defaultdict(float)
+points_completed_by_date_actual = collections.defaultdict(float)
+# this maps date to {tag: points} dict
+points_completed_by_date_tag = \
+  collections.defaultdict(lambda: collections.defaultdict(float))
 tasks_list.append(['assignee', 'task', 'estimated', 'actual', 'created at', 'due on', 'completed at'])
 
 if not args.input and not args.projectid:
@@ -77,9 +83,6 @@ elif args.projectid:
     # Asana API reference: https://asana.com/developers/api-reference/users
     client = asana.Client.basic_auth(ASANA_API_KEY)
     asana_project = client.projects.find_by_id(int(args.projectid, 10))
-    # update default file names
-    tasks_list_csv = '%s_tasks_%s.csv' % (asana_project['id'], now.strftime(DATETIME_FORMAT))
-    burndown_csv = '%s_burndown_%s.csv' % (asana_project['id'], now.strftime(DATETIME_FORMAT))
     # parse start and end dates
     match = re.search(pattern_dates, asana_project['name'])
     if match:
@@ -110,10 +113,6 @@ for task in tasks:
     name = task['name'].encode('ascii', 'replace')
     completed = task['completed']
     created_at = dateutil.parser.parse(task['created_at']).strftime(DATE_FORMAT)
-    # check tags
-    tags = task['tags']
-    is_core = any(tag['id'] == TAGS['core'] for tag in tags)
-    is_custom = any(tag['id'] == TAGS['custom'] for tag in tags)
 
     try:
         assignee = task['assignee']['name'].encode('ascii', 'replace')
@@ -142,45 +141,34 @@ for task in tasks:
         else:
             actual = float(match.group(2) or 0.0)
     else:
-        for tag in tags:
+        for tag in task['tags']:
             if tag['name'].endswith('pts'):
                 estimated = actual = float(tag['name'][:-3])
+
+    # tags
+    tag = None
+    for t in task['tags']:
+        if t['name'] in TAGS:
+            tag = t['name']
+            break
+    estimated_by_tag[tag] += estimated
+    actual_by_tag[tag] += actual
+
     if completed:
         estimated_points_completed += estimated
         actual_points_completed += actual
-        # estimated points
-        if points_completed_by_date.get(completed_at):
-            points_completed_by_date[completed_at] += estimated
-        else:
-            points_completed_by_date[completed_at] = estimated
-
-        # actual points
-        if points_completed_by_date_actual.get(completed_at):
-            points_completed_by_date_actual[completed_at] += actual
-        else:
-            points_completed_by_date_actual[completed_at] = actual
+        points_completed_by_date[completed_at] += estimated
+        points_completed_by_date_tag[completed_at][tag] += estimated
+        points_completed_by_date_actual[completed_at] += actual
 
     # update totals
-    points_estimated += float(estimated)
-    points_actual += float(actual)
-
-    if is_core:
-        points_core += float(actual)
-
-    if is_custom:
-        points_custom += float(actual)
+    points_estimated += estimated
+    points_actual += actual
 
     tasks_list.append([assignee, name, estimated, actual, created_at, due_on, completed_at])
 
-# stats
-completed_percentage = round((float(estimated_points_completed) / points_estimated) * 100.0, 2)
-percentage_core = round((float(points_core) / points_actual) * 100.0, 2)
-percentage_custom = round((float(points_custom) / points_actual) * 100.0, 2)
-points_product = points_core + points_custom
-percentage_product = percentage_core + percentage_custom
-
 # dump task list to csv
-with open(tasks_list_csv, 'w') as fp:
+with open('tasks.csv', 'w') as fp:
     a = csv.writer(fp, delimiter=',')
     a.writerows(tasks_list)
 
@@ -188,19 +176,21 @@ with open(tasks_list_csv, 'w') as fp:
 day_before_start = start_date - datetime.timedelta(days=1)
 days = (end_date - start_date).days
 points_remaining = points_estimated
-points_remaining_actual = points_estimated
+points_remaining_actual = points_actual
+estimated_by_tag_remaining = copy.deepcopy(estimated_by_tag)
 current_date = start_date
 days_remaining = days
 avg_points_per_day = points_estimated / days
 
-burndown.append(['date', 'estimated', 'actual', 'ideal'])
+tags = sorted(estimated_by_tag.keys(), key=lambda t: t or 'ZZZ')
+burndown.append(['date', 'estimated', 'actual', 'ideal'] + tags)
 while current_date <= end_date:
-    # estimated
-    points_on_day = (points_completed_by_date.get(current_date.strftime(DATE_FORMAT)) or 0)
-    points_remaining -= points_on_day
-    # actual
-    points_on_day_actual = (points_completed_by_date_actual.get(current_date.strftime(DATE_FORMAT)) or 0)
-    points_remaining_actual -= points_on_day_actual
+    day = current_date.strftime(DATE_FORMAT)
+    points_remaining -= points_completed_by_date[day]
+    points_remaining_actual -= points_completed_by_date_actual[day]
+    for tag in estimated_by_tag_remaining:
+        estimated_by_tag_remaining[tag] -= points_completed_by_date_tag[day][tag]
+
     # linear
     if days_remaining == days:
         linear_burn = points_estimated
@@ -208,24 +198,34 @@ while current_date <= end_date:
         linear_burn = days_remaining * avg_points_per_day
 
     if current_date <= datetime.datetime.today():
-        burndown.append([current_date.strftime(DATE_FORMAT), points_remaining, points_remaining_actual, linear_burn])
+        values = ([day, points_remaining, points_remaining_actual, linear_burn] +
+                  [estimated_by_tag_remaining[tag] for tag in tags])
     else:
-        burndown.append([current_date.strftime(DATE_FORMAT), None, None, linear_burn])
+        values = [day, None, None, linear_burn]
 
+    burndown.append(values)
     days_remaining -= 1
     current_date += datetime.timedelta(days=1)
-with open(burndown_csv, 'w') as fp:
+
+with open('burndown.csv', 'w') as fp:
     a = csv.writer(fp, delimiter=',')
     a.writerows(burndown)
+
+# stats
+completed_percentage = round((float(estimated_points_completed) / points_estimated) * 100.0, 2)
 
 print "Sprint from %s to %s (%s days)" % (start, end, days)
 print "Estimated: %s" % points_estimated
 print "Actual: %s" % points_actual
 print "Completed [Estimated]: %s (%s%%)" % (estimated_points_completed, completed_percentage)
 print "Completed [Actual]: %s" % actual_points_completed
-print "Actual points on Core: %s (%s%%)" % (points_core, percentage_core)
-print "Actual points on Custom: %s (%s%%)" % (points_custom, percentage_custom)
-print "Actual points on Product: %s (%s%%)" % (points_product, percentage_product)
+print "Tags:"
+for tag in sorted(set(estimated_by_tag.keys() + actual_by_tag.keys())):
+    estimated = estimated_by_tag.get(tag)
+    actual = actual_by_tag.get(tag)
+    print '  %s: estimated %s (%s%%), actual %s (%s%%)' % (
+        tag, estimated, round((float(estimated) / points_estimated) * 100.0, 2),
+        actual, round((float(actual) / points_actual) * 100.0, 2))
 
 # Generate chart URL using Google Image Charts API
 # https://google-developers.appspot.com/chart/image/docs/making_charts
